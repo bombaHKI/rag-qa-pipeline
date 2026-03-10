@@ -74,12 +74,12 @@ async def ask_question(req: QuestionRequest):
         question=req.question,
         answer="This is a good question, I don't have the response... yet :)",
         sources=[
-            SourceInfo(
-                title="source title placeholder",
-                score=13.0,
-                text="Sadly I don't have the answer.",
-                url="url"
-            )
+            {
+                "title": "source title placeholder",
+                "score": 13.0,
+                "text": "Sadly I don't have the answer.",
+                "url": "url"
+            }
         ]
     )
 
