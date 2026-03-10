@@ -27,7 +27,7 @@ services:
       dockerfile: docker/Dockerfile.ui
     container_name: rag-ui
     ports:
-      - "8501:8501"
+      - "8500:8500"
     environment:
       - API_URL=http://api:8000
     depends_on:
