@@ -55,7 +55,7 @@ The easiest way to run the app is with Docker. The repository includes separate 
 
 ### Build & Run
 
-From the repo root, run:
+From the `docker` folder, run:
 
 ```bash
 docker compose up --build
