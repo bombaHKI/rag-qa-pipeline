@@ -46,6 +46,85 @@ def evaluate_answer(question: str, reference: str) -> dict | None:
         st.error(f"Connection error: {e}")
         return None
 
+def list_documents() -> dict | None:
+    """List all ingested documents."""
+    try:
+        r = requests.get(f"{API_URL}/documents", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except requests.HTTPError as e:
+        st.error(f"API error: {e.response.text}")
+        return None
+    except Exception as e:
+        st.error(f"Connection error: {e}")
+        return None
+
+def ingest_documents(urls: list[str]) -> dict | None:
+    """Ingest one or more Wikipedia documents."""
+    try:
+        r = requests.post(
+            f"{API_URL}/ingest",
+            json={"urls": urls},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()
+    except requests.HTTPError as e:
+        st.error(f"API error: {e.response.text}")
+        return None
+    except Exception as e:
+        st.error(f"Connection error: {e}")
+        return None
+
+def delete_documents(doc_ids: list[str] | None = None, delete_all: bool = False) -> dict | None:
+    """Delete one or more documents."""
+    try:
+        params = {}
+        if delete_all:
+            params["delete_all"] = True
+        elif doc_ids:
+            params["doc_ids"] = doc_ids
+        
+        r = requests.delete(
+            f"{API_URL}/documents",
+            params=params,
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json()
+    except requests.HTTPError as e:
+        st.error(f"API error: {e.response.text}")
+        return None
+    except Exception as e:
+        st.error(f"Connection error: {e}")
+        return None
+
+def get_random_articles(count: int) -> dict | None:
+    """Get random Wikipedia article URLs."""
+    try:
+        r = requests.get(f"{API_URL}/random-articles", params={"count": count}, timeout=20)
+        r.raise_for_status()
+        return r.json()
+    except requests.HTTPError as e:
+        st.error(f"API error: {e.response.text}")
+        return None
+    except Exception as e:
+        st.error(f"Connection error: {e}")
+        return None
+
+def reset_to_defaults() -> dict | None:
+    """Reset the collection to default articles."""
+    try:
+        r = requests.post(f"{API_URL}/reset-to-defaults", timeout=30)
+        r.raise_for_status()
+        return r.json()
+    except requests.HTTPError as e:
+        st.error(f"API error: {e.response.text}")
+        return None
+    except Exception as e:
+        st.error(f"Connection error: {e}")
+        return None
+
 def load_eval_example(question: str, reference: str) -> None:
     """Populate evaluation inputs from a preset example."""
     st.session_state["eval_q"] = question
@@ -57,17 +136,31 @@ st.title("💡 RAG Q&A Pipeline")
 
 # --- Sidebar ---
 with st.sidebar:
+    st.markdown("""
+        # 🧠 RAG Q&A App
+
+        This app answers your questions using **Simple English Wikipedia** as a knowledge base.  
+        It uses a **Retrieval-Augmented Generation (RAG)** pipeline:
+
+        1. **Retrieve** relevant passages from Wikipedia using vector search.
+        2. **Re-rank** them for precision with a cross-encoder.
+        3. **Generate** a fluent answer using a pretrained language model.
+
+        All processing runs **locally**, no paid APIs needed.  
+        You can ingest Wikipedia data, ask questions, and even evaluate answer quality, all in one interface.
+    """)
+
     st.header("System Status")
     health = get_health()
     if health:
         st.success(f"API: Online")
     else:
-        st.error("API: Offline — start the backend with `uvicorn app.api:app`")
+        st.error("API: Offline - start the backend with `uvicorn app.api:app`")
 
 
 
 # --- Main Tabs ---
-tab_qa, tab_eval, tab_info = st.tabs(["💬 Ask Questions", "📊 Evaluate Answers", "🤓 Some info"])
+tab_qa, tab_eval, tab_ingest = st.tabs(["💬 Ask Questions", "📊 Evaluate Answers", "🗂️ Manage Documents"])
 
 # --- Q&A Tab ---
 with tab_qa:
@@ -168,17 +261,117 @@ with tab_eval:
                     with st.expander(f"[{i}] {source['title']} (score: {source['score']:.4f})"):
                         st.write(source["text"])
 
-with tab_info:
+with tab_ingest:
     st.markdown("""
-        # 🧠 RAG Q&A App
-
-        This app answers your questions using **Simple English Wikipedia** as a knowledge base.  
-        It uses a **Retrieval-Augmented Generation (RAG)** pipeline:
-
-        1. **Retrieve** relevant passages from Wikipedia using vector search.
-        2. **Re-rank** them for precision with a cross-encoder.
-        3. **Generate** a fluent answer using a pretrained language model.
-
-        All processing runs **locally**, no paid APIs needed.  
-        You can ingest Wikipedia data, ask questions, and even evaluate answer quality, all in one interface.
+    **Manage Documents** — Add Wikipedia articles to your knowledge base or remove existing ones.
+    
+    Only valid Wikipedia links are accepted (e.g., `https://en.wikipedia.org/wiki/Wikipedia:Article_titles`).
     """)
+    
+    # --- List current documents ---
+    st.subheader("📚 Ingested Documents")
+    doc_list = list_documents()
+    
+    if doc_list and doc_list["documents"]:
+        documents = doc_list["documents"]
+        st.info(f"Total: {doc_list['count']} document(s)")
+        
+        # Create a scrollable container for the document list
+        with st.container(height=400, border=True):
+            # Create a table view with URLs
+            for i, doc in enumerate(documents):
+                col1, col2, col3 = st.columns([2, 3, 0.3])
+                with col1:
+                    st.write(f"**#{doc['id']}** {doc['title']}")
+                with col2:
+                    st.caption(doc['url'])
+                with col3:
+                    if st.button("🗑️", key=f"del_{doc['id']}", help="Delete this document"):
+                        result = delete_documents(doc_ids=[doc['id']])
+                        if result and result["success"]:
+                            st.success(result["message"])
+                            st.rerun()
+                        elif result:
+                            st.error(result["message"])
+        
+        # Delete all button
+        if st.button("🗑️ Delete All Documents", key="del_all", help="WARNING: This cannot be undone", type="secondary"):
+            result = delete_documents(delete_all=True)
+            if result and result["success"]:
+                st.success(result["message"])
+                st.rerun()
+            elif result:
+                st.error(result["message"])
+    else:
+        st.info("📭 No documents ingested yet. Add some below!")
+    
+    # --- Reset to defaults option ---
+    col_reset_left, col_reset_right = st.columns([1, 3])
+    with col_reset_left:
+        if st.button("♻️ Reset to Defaults", key="reset_defaults", help="Restore the default Hungarian-related articles"):
+            with st.spinner("Resetting to default articles..."):
+                result = reset_to_defaults()
+            if result and result["success_count"] > 0:
+                st.success(f"✅ Reset complete! Added {result['success_count']} default article(s)")
+                st.rerun()
+            elif result:
+                st.error(f"❌ Reset failed: {result.get('failure_count', 0)} article(s) failed to load")
+    with col_reset_right:
+        st.write("")  # Spacer
+    
+    st.divider()
+    st.subheader("➕ Add Documents")
+    st.markdown("Enter Wikipedia article URLs. Example: `https://en.wikipedia.org/wiki/Hungary`")
+    
+    # Single URL input
+    single_url = st.text_input(
+        "Enter a Wikipedia URL:",
+        placeholder="https://en.wikipedia.org/wiki/Example",
+        key="single_url"
+    )
+    
+    if st.button("Add Document", key="btn_add_single", type="primary"):
+        if single_url.strip():
+            result = ingest_documents([single_url])
+            if result:
+                if result["success_count"] > 0:
+                    st.success(f"✅ {result['results'][0]['message']}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {result['results'][0]['message']}")
+        else:
+            st.warning("Please enter a URL")
+    
+    st.divider()
+    
+    # Random articles loader
+    st.subheader("🎲 Load Random Articles")
+    st.markdown("Automatically add random Wikipedia articles to your collection:")
+    
+    random_pick_div, _ = st.columns([1, 4])
+    with random_pick_div:
+        new_article_count = st.number_input(
+                "Number of articles:",
+                min_value=1,
+                max_value=20,
+                value=5,
+                step=1,
+                key="random_count"
+            )
+        if st.button(f"🎲 Load", key="btn_random", type="primary"):
+            with st.spinner(f"Fetching {new_article_count} random article(s)..."):
+                random_result = get_random_articles(count=new_article_count)
+            
+            if random_result and random_result["articles"]:
+                # Ingest the random articles
+                with st.spinner("Adding articles..."):
+                    ingest_result = ingest_documents(random_result["articles"])
+                
+                if ingest_result:
+                    if ingest_result["success_count"] > 0:
+                        st.success(f"✅ Added {ingest_result['success_count']} article(s)")
+                        st.rerun()
+                    if ingest_result["failure_count"] > 0:
+                        st.warning(f"⚠️ Failed to add {ingest_result['failure_count']} article(s)")
+            else:
+                st.info("No new articles available to load.")
