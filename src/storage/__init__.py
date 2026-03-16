@@ -1,7 +1,2 @@
-"""
-Storage module for document management.
-"""
-
-from . import document_store
-
-__all__ = ["document_store"]
+from src.storage.document_store import DocumentStore
+from src.storage.embedding_store import EmbeddingStore

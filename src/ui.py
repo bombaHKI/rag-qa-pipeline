@@ -9,20 +9,19 @@ import logging
 import streamlit as st
 
 from src.rag_orchestrator import RAG_Orchestrator
-from src.storage import document_store
 
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
 st.set_page_config(page_title="RAG Q&A", page_icon="💡", layout="centered")
 st.title('RAG Q&A')
+
 @st.cache_resource
 def get_orchestrator():
     return RAG_Orchestrator()
 
 orchestrator = get_orchestrator()
-
 
 def ask_question(question: str) -> dict | None:
     try:
@@ -35,18 +34,12 @@ def evaluate_answer(question: str, reference: str) -> dict | None:
     """Generate answer and compute dummy evaluation metrics."""
     try:
         answer_dict = orchestrator.answer(question)
-        dummy_metrics = {
-            "rouge1": 0.8,
-            "rouge2": 0.6,
-            "rougeL": 0.75,
-            "semantic_similarity": 0.82,
-            "faithfulness_score": 0.9,
-        }
+        result_metrics = orchestrator.evaluate(answer_dict['answer'], reference)
         return {
             "question": question,
-            "generated_answer": answer_dict["answer"],
+            "generated_answer": answer_dict['answer'],
             "reference_answer": reference,
-            "metrics": dummy_metrics,
+            "metrics": result_metrics,
             "sources": answer_dict["sources"],
         }
     except Exception as e:
@@ -56,7 +49,7 @@ def evaluate_answer(question: str, reference: str) -> dict | None:
 def list_documents() -> dict | None:
     """List all ingested documents."""
     try:
-        docs = document_store.list_documents()
+        docs = orchestrator.list_documents()
         return {"documents": docs, "count": len(docs)}
     except Exception as e:
         st.error(f"Error: {e}")
@@ -65,7 +58,7 @@ def list_documents() -> dict | None:
 def ingest_documents(urls: list[str]) -> dict | None:
     """Ingest one or more Wikipedia documents."""
     try:
-        success_count, failure_count, results = document_store.add_documents(urls)
+        success_count, failure_count, results = orchestrator.add_documents(urls)
         return {"success_count": success_count, "failure_count": failure_count, "results": results}
     except Exception as e:
         st.error(f"Error: {e}")
@@ -75,10 +68,10 @@ def delete_documents(doc_ids: list[str] | None = None, delete_all: bool = False)
     """Delete one or more documents."""
     try:
         if delete_all:
-            deleted_count, message = document_store.delete_all_documents()
+            deleted_count, message = orchestrator.delete_all_documents()
             return {"success": deleted_count > 0, "message": message, "deleted_count": deleted_count}
         elif doc_ids:
-            success_count, failure_count = document_store.delete_documents(doc_ids)
+            success_count, failure_count = orchestrator.delete_documents(doc_ids)
             message = f"Deleted {success_count} document(s)" + (f", {failure_count} failed" if failure_count > 0 else "")
             return {"success": success_count > 0, "message": message, "deleted_count": success_count}
         return None
@@ -89,7 +82,7 @@ def delete_documents(doc_ids: list[str] | None = None, delete_all: bool = False)
 def get_random_articles(count: int) -> dict | None:
     """Get random Wikipedia article URLs."""
     try:
-        articles = document_store.get_random_articles(count=count)
+        articles = orchestrator.get_random_articles(count=count)
         return {"articles": articles, "count": len(articles)}
     except Exception as e:
         st.error(f"Error: {e}")
@@ -98,7 +91,7 @@ def get_random_articles(count: int) -> dict | None:
 def reset_to_defaults() -> dict | None:
     """Reset the collection to default articles."""
     try:
-        success_count, failure_count, results = document_store.reset_to_default_documents()
+        success_count, failure_count, results = orchestrator.reset_to_default_documents()
         return {"success_count": success_count, "failure_count": failure_count, "results": results}
     except Exception as e:
         st.error(f"Error: {e}")
@@ -108,6 +101,8 @@ def load_eval_example(question: str, reference: str) -> None:
     """Populate evaluation inputs from a preset example."""
     st.session_state["eval_q"] = question
     st.session_state["eval_ref"] = reference
+
+
 
 # --- Sidebar ---
 with st.sidebar:
