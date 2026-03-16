@@ -1,27 +1,53 @@
+from src.config import RETRIEVAL_TOP_K, RERANK_TOP_K
+from src.services.generator import Generator
+from src.services.reranker import Reranker
 from src.storage import DocumentStore
 
 
 class RAG_Orchestrator:
     def __init__(self):
         self.document_store = DocumentStore()
+        self.reranker = Reranker()
+        self.generator = Generator()
 
     def answer(self, question: str) -> dict:
-        results = self.document_store.embedding_store.query(question)
-        sources = []
+        # 1. Retrieve top-k candidates from vector store
+        results = self.document_store.embedding_store.query(question, n_results=RETRIEVAL_TOP_K)
         documents = results.get("documents", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
-        for text, meta, distance in zip(documents, metadatas, distances):
+
+        if not documents:
+            return {
+                "question": question,
+                "answer": "No documents found. Please ingest some articles first.",
+                "sources": [],
+            }
+
+        # 2. Rerank candidates
+        ranked = self.reranker.rerank(question, documents)
+        ranked = ranked[:RERANK_TOP_K]
+
+        # 3. Build reranked sources
+        top_passages = []
+        sources = []
+        for orig_idx, rerank_score in ranked:
+            text = documents[orig_idx]
+            meta = metadatas[orig_idx]
+            top_passages.append(text)
             sources.append({
                 "title": meta.get("title", ""),
                 "text": text,
-                "score": distance,
+                "score": rerank_score,
                 "url": meta.get("url", ""),
             })
+
+        # 4. Generate answer from top passages
+        generated_answer = self.generator.generate(question, top_passages)
+
         return {
-            'question': question,
-            'answer': "Answer generation not implemented yet.",
-            'sources': sources,
+            "question": question,
+            "answer": generated_answer,
+            "sources": sources,
         }
     
     def evaluate(self, answer, reference_answer):

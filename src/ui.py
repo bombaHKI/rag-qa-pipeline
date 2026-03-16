@@ -271,7 +271,7 @@ with tab_ingest:
     # --- Reset to defaults option ---
     col_reset_left, col_reset_right = st.columns([1, 3])
     with col_reset_left:
-        if st.button("♻️ Reset to Defaults", key="reset_defaults", help="Restore the default Hungarian-related articles"):
+        if st.button("♻️ Reset to Defaults", key="reset_defaults", help="Restore the default Hungary-related articles"):
             with st.spinner("Resetting to default articles..."):
                 result = reset_to_defaults()
             if result and result["success_count"] > 0:
