@@ -9,10 +9,12 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements/api.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Copy backend source
+# Copy source
 COPY src /app/src
 
-CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]
+ENV PYTHONPATH=/app
+
+CMD ["streamlit", "run", "src/ui.py", "--server.port=8500", "--server.address=0.0.0.0"]

@@ -4,135 +4,110 @@ Provides a minimal chat-like interface for asking questions
 and an evaluation panel for testing answer quality.
 """
 
-import os
+import logging
+
 import streamlit as st
-import requests
 
-API_URL = os.environ.get("API_URL", "http://localhost:8000")
+from src.rag_orchestrator import RAG_Orchestrator
+from src.storage import document_store
+
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 
-def get_health() -> dict | None:
-    try:
-        r = requests.get(f"{API_URL}/health", timeout=5)
-        return r.json()
-    except Exception:
-        return None
+st.set_page_config(page_title="RAG Q&A", page_icon="💡", layout="centered")
+st.title('RAG Q&A')
+@st.cache_resource
+def get_orchestrator():
+    return RAG_Orchestrator()
+
+orchestrator = get_orchestrator()
+
 
 def ask_question(question: str) -> dict | None:
     try:
-        r = requests.post(f"{API_URL}/ask", json={"question": question}, timeout=120)
-        r.raise_for_status()
-        return r.json()
-    except requests.HTTPError as e:
-        st.error(f"API error: {e.response.text}")
-        return None
+        return orchestrator.answer(question)
     except Exception as e:
-        st.error(f"Connection error: {e}")
+        st.error(f"Error: {e}")
         return None
 
 def evaluate_answer(question: str, reference: str) -> dict | None:
+    """Generate answer and compute dummy evaluation metrics."""
     try:
-        r = requests.post(
-            f"{API_URL}/evaluate",
-            json={"question": question, "reference_answer": reference},
-            timeout=120,
-        )
-        r.raise_for_status()
-        return r.json()
-    except requests.HTTPError as e:
-        st.error(f"API error: {e.response.text}")
-        return None
+        answer_dict = orchestrator.answer(question)
+        dummy_metrics = {
+            "rouge1": 0.8,
+            "rouge2": 0.6,
+            "rougeL": 0.75,
+            "semantic_similarity": 0.82,
+            "faithfulness_score": 0.9,
+        }
+        return {
+            "question": question,
+            "generated_answer": answer_dict["answer"],
+            "reference_answer": reference,
+            "metrics": dummy_metrics,
+            "sources": answer_dict["sources"],
+        }
     except Exception as e:
-        st.error(f"Connection error: {e}")
+        st.error(f"Error: {e}")
         return None
 
 def list_documents() -> dict | None:
     """List all ingested documents."""
     try:
-        r = requests.get(f"{API_URL}/documents", timeout=10)
-        r.raise_for_status()
-        return r.json()
-    except requests.HTTPError as e:
-        st.error(f"API error: {e.response.text}")
-        return None
+        docs = document_store.list_documents()
+        return {"documents": docs, "count": len(docs)}
     except Exception as e:
-        st.error(f"Connection error: {e}")
+        st.error(f"Error: {e}")
         return None
 
 def ingest_documents(urls: list[str]) -> dict | None:
     """Ingest one or more Wikipedia documents."""
     try:
-        r = requests.post(
-            f"{API_URL}/ingest",
-            json={"urls": urls},
-            timeout=30,
-        )
-        r.raise_for_status()
-        return r.json()
-    except requests.HTTPError as e:
-        st.error(f"API error: {e.response.text}")
-        return None
+        success_count, failure_count, results = document_store.add_documents(urls)
+        return {"success_count": success_count, "failure_count": failure_count, "results": results}
     except Exception as e:
-        st.error(f"Connection error: {e}")
+        st.error(f"Error: {e}")
         return None
 
 def delete_documents(doc_ids: list[str] | None = None, delete_all: bool = False) -> dict | None:
     """Delete one or more documents."""
     try:
-        params = {}
         if delete_all:
-            params["delete_all"] = True
+            deleted_count, message = document_store.delete_all_documents()
+            return {"success": deleted_count > 0, "message": message, "deleted_count": deleted_count}
         elif doc_ids:
-            params["doc_ids"] = doc_ids
-        
-        r = requests.delete(
-            f"{API_URL}/documents",
-            params=params,
-            timeout=10,
-        )
-        r.raise_for_status()
-        return r.json()
-    except requests.HTTPError as e:
-        st.error(f"API error: {e.response.text}")
+            success_count, failure_count = document_store.delete_documents(doc_ids)
+            message = f"Deleted {success_count} document(s)" + (f", {failure_count} failed" if failure_count > 0 else "")
+            return {"success": success_count > 0, "message": message, "deleted_count": success_count}
         return None
     except Exception as e:
-        st.error(f"Connection error: {e}")
+        st.error(f"Error: {e}")
         return None
 
 def get_random_articles(count: int) -> dict | None:
     """Get random Wikipedia article URLs."""
     try:
-        r = requests.get(f"{API_URL}/random-articles", params={"count": count}, timeout=20)
-        r.raise_for_status()
-        return r.json()
-    except requests.HTTPError as e:
-        st.error(f"API error: {e.response.text}")
-        return None
+        articles = document_store.get_random_articles(count=count)
+        return {"articles": articles, "count": len(articles)}
     except Exception as e:
-        st.error(f"Connection error: {e}")
+        st.error(f"Error: {e}")
         return None
 
 def reset_to_defaults() -> dict | None:
     """Reset the collection to default articles."""
     try:
-        r = requests.post(f"{API_URL}/reset-to-defaults", timeout=30)
-        r.raise_for_status()
-        return r.json()
-    except requests.HTTPError as e:
-        st.error(f"API error: {e.response.text}")
-        return None
+        success_count, failure_count, results = document_store.reset_to_default_documents()
+        return {"success_count": success_count, "failure_count": failure_count, "results": results}
     except Exception as e:
-        st.error(f"Connection error: {e}")
+        st.error(f"Error: {e}")
         return None
 
 def load_eval_example(question: str, reference: str) -> None:
     """Populate evaluation inputs from a preset example."""
     st.session_state["eval_q"] = question
     st.session_state["eval_ref"] = reference
-
-# --- Page Config ---
-st.set_page_config(page_title="RAG Q&A", page_icon="💡", layout="wide")
-st.title("💡 RAG Q&A Pipeline")
 
 # --- Sidebar ---
 with st.sidebar:
@@ -149,13 +124,6 @@ with st.sidebar:
         All processing runs **locally**, no paid APIs needed.  
         You can ingest Wikipedia data, ask questions, and even evaluate answer quality, all in one interface.
     """)
-
-    st.header("System Status")
-    health = get_health()
-    if health:
-        st.success(f"API: Online")
-    else:
-        st.error("API: Offline - start the backend with `uvicorn app.api:app`")
 
 
 

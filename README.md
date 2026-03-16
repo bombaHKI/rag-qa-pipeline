@@ -24,8 +24,7 @@ Key functionalities:
 
 ## 🏗 Structure & Libraries
 
-- **Backend**: FastAPI  
-- **Frontend**: Streamlit  
+- **Frontend**: Streamlit (calls the RAG orchestrator directly)
 - **Vector Search**: ChromaDB + Sentence Transformers  
 - **Reranker**: Cross-encoder (MS MARCO MiniLM)  
 - **Answer Generation**: Flan-T5 seq2seq model  
@@ -36,26 +35,31 @@ The internal pipeline retrieves, re-ranks, and generates answers, but details ar
 
 ## ⚡ Docker Setup
 
-The easiest way to run the app is with Docker. The repository includes separate Dockerfiles for the backend API and the Streamlit UI, managed with `docker-compose`.
+The easiest way to run the app is with Docker. The repository includes a single Dockerfile managed with `docker-compose`.
 
-### Services
+### Service
 
-- **api**: FastAPI backend
-  - Exposes port `8000`
-  - Uses volumes for model cache and ChromaDB data
-  - Healthcheck endpoint at `/health`
-- **ui**: Streamlit frontend
+- **app**: Streamlit application
   - Exposes port `8500`
-  - Connects to the API service internally (`API_URL=http://api:8000`)
+  - Uses volumes for model cache and data
 
 ### Volumes
 
 - `model_cache`: stores Hugging Face model cache
-- `chroma_data`: stores ChromaDB persistent data
 
 ### Build & Run
+
+**Run with docker**
 
 From the `docker` folder, run:
 
 ```bash
 docker compose up --build
+```
+
+**Run locally**
+
+From root:
+```bash
+streamlit run src/ui.py --server.port=8500 --server.address=0.0.0.0
+```
