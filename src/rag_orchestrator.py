@@ -1,4 +1,5 @@
 from src.config import RETRIEVAL_TOP_K, RERANK_TOP_K
+from src.services.evaluator import Evaluator
 from src.services.generator import Generator
 from src.services.reranker import Reranker
 from src.storage import DocumentStore
@@ -9,6 +10,7 @@ class RAG_Orchestrator:
         self.document_store = DocumentStore()
         self.reranker = Reranker()
         self.generator = Generator()
+        self.evaluator = Evaluator()
 
     def answer(self, question: str) -> dict:
         # 1. Retrieve top-k candidates from vector store
@@ -28,12 +30,10 @@ class RAG_Orchestrator:
         ranked = ranked[:RERANK_TOP_K]
 
         # 3. Build reranked sources
-        top_passages = []
         sources = []
         for orig_idx, rerank_score in ranked:
             text = documents[orig_idx]
             meta = metadatas[orig_idx]
-            top_passages.append(text)
             sources.append({
                 "title": meta.get("title", ""),
                 "text": text,
@@ -42,22 +42,29 @@ class RAG_Orchestrator:
             })
 
         # 4. Generate answer from top passages
-        generated_answer = self.generator.generate(question, top_passages)
+        context_passages = [s["text"] for s in sources]
+        generated_answer = self.generator.generate(question, context_passages)
 
         return {
             "question": question,
             "answer": generated_answer,
             "sources": sources,
+            "context_passages": context_passages,
         }
-    
-    def evaluate(self, answer, reference_answer):
-        return {
-            "rouge1": 0.8,
-            "rouge2": 0.6,
-            "rougeL": 0.75,
-            "semantic_similarity": 0.82,
-            "faithfulness_score": 0.9,
-        }
+
+    def evaluate(
+        self,
+        answer: str,
+        context_passages: list[str],
+        question: str,
+        reference_answer: str | None = None,
+    ) -> dict:
+        return self.evaluator.evaluate(
+            question=question,
+            answer=answer,
+            context_passages=context_passages,
+            reference_answer=reference_answer,
+        )
 
     def list_documents(self) -> list[dict]:
         return self.document_store.list_documents()

@@ -31,10 +31,15 @@ def ask_question(question: str) -> dict | None:
         return None
 
 def evaluate_answer(question: str, reference: str) -> dict | None:
-    """Generate answer and compute dummy evaluation metrics."""
+    """Generate answer and compute evaluation metrics."""
     try:
         answer_dict = orchestrator.answer(question)
-        result_metrics = orchestrator.evaluate(answer_dict['answer'], reference)
+        result_metrics = orchestrator.evaluate(
+            answer=answer_dict['answer'],
+            context_passages=answer_dict.get('context_passages', []),
+            question=question,
+            reference_answer=reference,
+        )
         return {
             "question": question,
             "generated_answer": answer_dict['answer'],
@@ -213,16 +218,20 @@ with tab_eval:
                 st.subheader("Quality Metrics")
                 metrics = result["metrics"]
                 cols = st.columns(5)
-                cols[0].metric("ROUGE-1", f"{metrics['rouge1']:.4f}")
-                cols[1].metric("ROUGE-2", f"{metrics['rouge2']:.4f}")
-                cols[2].metric("ROUGE-L", f"{metrics['rougeL']:.4f}")
-                cols[3].metric("Semantic Sim.", f"{metrics['semantic_similarity']:.4f}")
-                cols[4].metric("Faithfulness", f"{metrics['faithfulness_score']:.4f}")
+                cols[0].metric("Faithfulness", f"{metrics['faithfulness']:.4f}")
+                cols[1].metric("Context Precision", f"{metrics['context_precision']:.4f}")
+                cols[2].metric("Answer Relevance", f"{metrics['answer_relevance']:.4f}")
+                if "context_recall" in metrics:
+                    cols[3].metric("Context Recall", f"{metrics['context_recall']:.4f}")
+                if "answer_correctness" in metrics:
+                    cols[4].metric("Answer Correctness", f"{metrics['answer_correctness']:.4f}")
 
                 st.subheader("Retrieved Sources")
                 for i, source in enumerate(result["sources"], 1):
                     with st.expander(f"[{i}] {source['title']} (score: {source['score']:.4f})"):
                         st.write(source["text"])
+                        if source.get("url"):
+                            st.caption(f"Source: {source['url']}")
 
 with tab_ingest:
     st.markdown("""
